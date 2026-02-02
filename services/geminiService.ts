@@ -5,7 +5,6 @@ import { ParcelData } from "../types";
 export const extractDataFromImages = async (base64Images: string[]): Promise<ParcelData[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  // Tworzymy części obrazu dla modelu
   const imageParts = base64Images.map(data => ({
     inlineData: {
       data,
@@ -18,18 +17,21 @@ export const extractDataFromImages = async (base64Images: string[]): Promise<Par
     contents: {
       parts: [
         ...imageParts,
-        { text: `Jesteś ekspertem od polskich dokumentów z rejestru gruntów. 
-        Wyciągnij dane o działkach i ich właścicielach z załączonych obrazów.
+        { text: `Jesteś ekspertem od polskich wypisów z rejestru gruntów. 
+        Wyciągnij dane o działkach i ich właścicielach z obrazów.
         
-        WAŻNE ZASADY:
-        1. IGNORUJ dane organu wydającego (np. "Starosta Opolski", "Urząd", "Województwo" w nagłówku). 
-        2. Szukaj sekcji "Właściciele", "Władający" lub tabeli z danymi osób.
-        3. Numer działki (np. 160902_2.0008.AR_4.480/2) rozbij na TERYT, numer obrębu i numer działki.
-        4. Powierzchnię podawaj w formacie z przecinkiem (np. 6,4843).
-        5. Numer KW powinien mieć format typu OP1O/00076546/7.
-        6. Jeśli na jednej stronie jest wiele osób dla jednej działki, stwórz osobny wiersz dla każdej osoby.
+        ZASADY DOTYCZĄCE MAŁŻEŃSTW I WSPÓŁWŁAŚCICIELI:
+        1. JEDEN WIERSZ NA DZIAŁKĘ: Jeśli działka ma wielu właścicieli (np. małżeństwo, współwłasność), NIE twórz osobnych rekordów. Połącz ich dane w jednym obiekcie.
+        2. ŁĄCZENIE NAZWISK: W polu 'imie' i 'nazwisko' wpisz dane wszystkich właścicieli rozdzielone przecinkiem lub spójnikiem "i" (np. imie: "JAN, ANNA", nazwisko: "KOWALSCY" lub imie: "JAN i ANNA", nazwisko: "KOWALSCY").
+        3. WSPÓLNOŚĆ MAŁŻEŃSKA: Jeśli w dokumencie widnieje "wspólność ustawowa majątkowa małżeńska", potraktuj to jako jeden wpis właścicielski dla danej działki.
         
-        Zwróć dane wyłącznie jako czysty JSON - tablica obiektów ParcelData.` }
+        ZASADY TECHNICZNE:
+        4. TERYT: Musi to być PEŁNY identyfikator (np. 160902_2.0002.AR_1.313). Nie skracaj go!
+        5. NR KW: Format np. OP1O/00076546/7.
+        6. POWIERZCHNIA: Format z przecinkiem, np. 0,4532.
+        7. IGNORUJ nagłówki urzędowe (Starosta, Urząd itp.).
+        
+        Zwróć dane jako czysty JSON - tablica obiektów ParcelData.` }
       ]
     },
     config: {
@@ -54,7 +56,7 @@ export const extractDataFromImages = async (base64Images: string[]): Promise<Par
             kod_pocztowy: { type: Type.STRING },
             miejscowosc: { type: Type.STRING }
           },
-          required: ["teryt", "imie", "nazwisko", "nr_dzialki"]
+          required: ["teryt", "nr_dzialki"]
         }
       }
     }
@@ -62,7 +64,14 @@ export const extractDataFromImages = async (base64Images: string[]): Promise<Par
 
   try {
     const text = response.text || "[]";
-    return JSON.parse(text.trim());
+    const results: ParcelData[] = JSON.parse(text.trim());
+    
+    // Ostateczna deduplikacja po TERYT (gdyby AI mimo wszystko przesłało dwie strony z tą samą działką)
+    const finalData = results.filter((v, i, a) => 
+      a.findIndex(t => t.teryt === v.teryt) === i
+    );
+
+    return finalData;
   } catch (e) {
     console.error("Błąd parsowania odpowiedzi Gemini:", e);
     return [];

@@ -21,13 +21,3 @@ export interface ProcessingState {
   progress: number;
   error: string | null;
 }
-
-// Interface for data extracted via Gemini AI from document images to fix the import error
-export interface ExtractedData {
-  imie: string;
-  nazwisko: string;
-  numerDzialki: string;
-  ulicaINumer: string;
-  miasto: string;
-  kodPocztowy: string;
-}
